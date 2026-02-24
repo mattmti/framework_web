@@ -4,10 +4,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 COPY . .
-RUN npm run build
+RUN ./node_modules/.bin/vite build
 
 # ─── Stage 2: Serve ───────────────────────────────────────────────────────────
 FROM nginx:alpine
