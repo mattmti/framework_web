@@ -22,7 +22,7 @@
     </div>
 
     <!-- Onglets -->
-    <div class="flex gap-2 mb-6">
+    <div class="flex flex-wrap gap-2 mb-6">
       <button v-for="tab in tabs" :key="tab.id"
         @click="activeTab = tab.id"
         class="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
@@ -35,18 +35,13 @@
 
     <!-- TAB: Utilisateurs -->
     <div v-if="activeTab === 'users'" class="card overflow-hidden">
-      <!-- Recherche -->
       <div class="p-4 border-b border-white/5">
         <input v-model="userSearch" @input="fetchUsers" type="text" class="input max-w-xs"
           placeholder="Rechercher un utilisateur..." />
       </div>
-
-      <!-- Loader -->
       <div v-if="usersLoading" class="py-12 text-center text-white/30">
         <div class="w-6 h-6 border-2 border-pitch-500/30 border-t-pitch-500 rounded-full animate-spin mx-auto mb-2" />
       </div>
-
-      <!-- Table -->
       <div v-else class="overflow-x-auto">
         <table class="w-full">
           <thead>
@@ -108,19 +103,117 @@
       </div>
     </div>
 
+    <!-- TAB: Joueurs importés du jour -->
+    <div v-if="activeTab === 'imported'" class="space-y-6">
+      <!-- Import action card -->
+      <div class="card p-6">
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h3 class="font-display text-2xl text-white mb-1">🌍 Importer les top joueurs du jour</h3>
+            <p class="text-white/40 text-sm max-w-lg">
+              Récupère les données fraîches des meilleurs joueurs mondiaux (Real Madrid, Barcelona,
+              Man City, Liverpool, Arsenal, Bayern, PSG, Inter) depuis football-api.com.
+              Utilise <strong class="text-white/70">~8 requêtes API</strong> sur les 100 disponibles par jour.
+            </p>
+          </div>
+          <div class="flex items-center gap-3 flex-shrink-0">
+            <select v-model="importSeason"
+              class="bg-white/10 text-white text-sm rounded-xl px-3 py-2 border border-white/10 focus:outline-none focus:border-pitch-500">
+              <option value="2024">Saison 2024-25</option>
+              <option value="2025">Saison 2025-26</option>
+            </select>
+            <button @click="triggerImport" :disabled="importing"
+              class="btn-primary whitespace-nowrap">
+              <span v-if="importing" class="animate-spin mr-2">⟳</span>
+              {{ importing ? 'Import en cours...' : '📡 Lancer l\'import' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Résultat import -->
+        <div v-if="importResult" class="mt-4 px-4 py-3 rounded-xl border text-sm"
+          :class="importResult.error
+            ? 'bg-red-500/10 border-red-500/20 text-red-400'
+            : 'bg-pitch-500/10 border-pitch-500/20 text-pitch-500'">
+          <template v-if="!importResult.error">
+            ✅ Import terminé — {{ importResult.added }} nouveaux joueurs · {{ importResult.updated }} mis à jour
+            · {{ importResult.api_requests_used }} requêtes API utilisées
+          </template>
+          <template v-else>
+            ❌ {{ importResult.error }}
+          </template>
+        </div>
+      </div>
+
+      <!-- Liste joueurs importés aujourd'hui -->
+      <div class="card overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-white/5">
+          <div>
+            <h3 class="font-display text-xl text-white">
+              Joueurs importés aujourd'hui
+              <span class="text-pitch-500 ml-2">{{ importedPlayers.length }}</span>
+            </h3>
+            <p class="text-xs text-white/30 mt-0.5">{{ todayDate }}</p>
+          </div>
+          <button @click="fetchImportedToday"
+            class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white text-xs transition-colors">
+            ↻ Actualiser
+          </button>
+        </div>
+
+        <!-- Loader -->
+        <div v-if="importedLoading" class="py-12 text-center text-white/30">
+          <div class="w-6 h-6 border-2 border-pitch-500/30 border-t-pitch-500 rounded-full animate-spin mx-auto mb-2" />
+          <p class="text-sm">Chargement...</p>
+        </div>
+
+        <!-- Aucun joueur -->
+        <div v-else-if="importedPlayers.length === 0" class="py-16 text-center text-white/30">
+          <div class="text-4xl mb-3">📭</div>
+          <p class="font-display text-lg">Aucun joueur importé aujourd'hui</p>
+          <p class="text-sm mt-1">Lance l'import ci-dessus pour récupérer les données fraîches.</p>
+        </div>
+
+        <!-- Grille joueurs -->
+        <div v-else class="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div v-for="player in importedPlayers" :key="player.id"
+            class="flex flex-col items-center text-center p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
+            <!-- Photo joueur -->
+            <div class="w-16 h-16 rounded-full overflow-hidden bg-white/10 mb-2 flex-shrink-0">
+              <img
+                :src="player.photo_url"
+                :alt="player.name"
+                class="w-full h-full object-cover"
+                @error="onPhotoError($event)"
+              />
+            </div>
+            <!-- Infos -->
+            <div class="font-semibold text-white text-xs leading-tight mb-1">{{ player.name }}</div>
+            <div class="text-white/40 text-xs">{{ player.club }}</div>
+            <div class="mt-1 flex items-center gap-1 justify-center flex-wrap">
+              <span class="text-xs px-1.5 py-0.5 rounded-full bg-pitch-500/20 text-pitch-500 border border-pitch-500/20">
+                {{ formatPosition(player.position) }}
+              </span>
+            </div>
+            <div class="mt-1 text-white/30 text-xs">{{ player.league }}</div>
+            <div class="mt-0.5 text-white/20 text-xs font-mono">
+              #{{ player.shirt_number ?? '?' }} · {{ player.age }} ans
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- TAB: Joueurs DB -->
     <div v-if="activeTab === 'players'" class="card p-6">
-      <h3 class="font-display text-2xl text-white mb-4">Synchronisation des joueurs</h3>
-      <p class="text-white/50 text-sm mb-6">
-        Lance la synchronisation avec API-Football pour mettre à jour la base de données.
-        Cette opération peut prendre plusieurs minutes.
+      <h3 class="font-display text-2xl text-white mb-1">Gestion des joueurs en base</h3>
+      <p class="text-white/40 text-sm mb-6">
+        L'import des top joueurs mondiaux se fait depuis l'onglet
+        <button @click="activeTab = 'imported'" class="text-pitch-500 hover:underline">🌍 Joueurs importés</button>.
+        Le seed initial est disponible via <code class="text-white/60 bg-white/5 px-1 rounded">node db/seed-players.js</code>.
       </p>
-      <button @click="syncPlayers" :disabled="syncing" class="btn-primary">
-        <span v-if="syncing" class="animate-spin">⟳</span>
-        {{ syncing ? 'Synchronisation en cours...' : '📡 Synchroniser les joueurs' }}
-      </button>
-      <div v-if="syncResult" class="mt-4 px-4 py-3 rounded-xl bg-pitch-500/10 border border-pitch-500/20 text-pitch-500 text-sm">
-        ✅ {{ syncResult }}
+      <div class="px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm">
+        ⚠️ Limite : 100 requêtes/jour sur football-api.com. L'import top joueurs en utilise ~8.
       </div>
     </div>
 
@@ -190,21 +283,22 @@ import api from '@/services/api'
 
 const activeTab = ref('users')
 const tabs = [
-  { id: 'users', label: '👥 Utilisateurs' },
-  { id: 'players', label: '⚽ Joueurs DB' },
+  { id: 'users',    label: '👥 Utilisateurs' },
+  { id: 'imported', label: '🌍 Joueurs importés du jour' },
+  { id: 'players',  label: '⚽ Joueurs DB' },
 ]
 
-// Stats
+// ─── Stats globales ───────────────────────────────────────────────
 const globalStats = ref(null)
 const stats = computed(() => [
-  { icon: '👥', value: globalStats.value?.total_users ?? '—', label: 'Utilisateurs' },
+  { icon: '👥', value: globalStats.value?.total_users    ?? '—', label: 'Utilisateurs' },
   { icon: '🎮', value: globalStats.value?.total_sessions ?? '—', label: 'Parties jouées' },
-  { icon: '🏆', value: globalStats.value?.total_wins ?? '—', label: 'Victoires' },
-  { icon: '📅', value: globalStats.value?.today_sessions ?? '—', label: 'Parties aujourd\'hui' },
-  { icon: '⚽', value: globalStats.value?.total_players ?? '—', label: 'Joueurs en BDD' },
+  { icon: '🏆', value: globalStats.value?.total_wins     ?? '—', label: 'Victoires' },
+  { icon: '📅', value: globalStats.value?.today_sessions ?? '—', label: "Parties aujourd'hui" },
+  { icon: '⚽', value: globalStats.value?.total_players  ?? '—', label: 'Joueurs en BDD' },
 ])
 
-// Users
+// ─── Users ───────────────────────────────────────────────────────
 const users = ref([])
 const usersLoading = ref(true)
 const userSearch = ref('')
@@ -222,7 +316,7 @@ const fetchUsers = () => {
   }, 300)
 }
 
-// History modal
+// ─── Historique ──────────────────────────────────────────────────
 const historyModal = ref(false)
 const selectedUser = ref(null)
 const userHistory = ref([])
@@ -238,7 +332,7 @@ const viewHistory = async (user) => {
   } catch {}
 }
 
-// Delete modal
+// ─── Suppression ─────────────────────────────────────────────────
 const deleteModal = ref(false)
 const userToDelete = ref(null)
 const deleteLoading = ref(false)
@@ -262,29 +356,64 @@ const executeDelete = async () => {
   }
 }
 
-// Sync joueurs
-const syncing = ref(false)
-const syncResult = ref('')
+// ─── Import top joueurs ──────────────────────────────────────────
+const importing = ref(false)
+const importResult = ref(null)
+const importedPlayers = ref([])
+const importedLoading = ref(false)
+const importSeason = ref('2024')
+const todayDate = computed(() => new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
 
-const syncPlayers = async () => {
-  syncing.value = true
-  syncResult.value = ''
+const fetchImportedToday = async () => {
+  importedLoading.value = true
   try {
-    const { data } = await api.post('/players/sync', { season: 2024 })
-    syncResult.value = `${data.added} joueurs ajoutés, ${data.updated} mis à jour.`
-  } catch (err) {
-    window.showToast?.({ type: 'error', message: 'Erreur lors de la synchronisation.' })
+    const { data } = await api.get('/admin/imported-today')
+    importedPlayers.value = data.players
+  } catch {
+    importedPlayers.value = []
   } finally {
-    syncing.value = false
+    importedLoading.value = false
   }
 }
 
+const triggerImport = async () => {
+  importing.value = true
+  importResult.value = null
+  try {
+    const { data } = await api.post('/admin/import-top-players', { season: parseInt(importSeason.value) })
+    importResult.value = data
+    // Actualiser la liste après import
+    await fetchImportedToday()
+    // Rafraîchir les stats
+    const stats = await api.get('/admin/stats')
+    globalStats.value = stats.data
+  } catch (err) {
+    importResult.value = { error: err.response?.data?.error || 'Erreur lors de l\'import.' }
+  } finally {
+    importing.value = false
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────
 const formatDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '—'
 
+const formatPosition = (pos) => {
+  const map = { Goalkeeper: 'Gardien', Defender: 'Défenseur', Midfielder: 'Milieu', Attacker: 'Attaquant' }
+  return map[pos] || pos || '?'
+}
+
+const onPhotoError = (event) => {
+  // Fallback : silhouette générique si la photo ne charge pas
+  event.target.src = 'https://media.api-sports.io/football/players/default.png'
+  event.target.onerror = null
+}
+
+// ─── Init ────────────────────────────────────────────────────────
 onMounted(async () => {
   await Promise.all([
     fetchUsers(),
     api.get('/admin/stats').then(({ data }) => { globalStats.value = data }).catch(() => {}),
+    fetchImportedToday(),
   ])
 })
 </script>

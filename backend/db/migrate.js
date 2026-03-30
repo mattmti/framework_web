@@ -14,6 +14,10 @@ const migrate = async () => {
   try {
     console.log('🚀 Démarrage de la migration...');
 
+    // Extension unaccent : permet la recherche sans accents (Muller → Müller)
+    await client.query(`CREATE EXTENSION IF NOT EXISTS unaccent;`);
+    console.log('✅ Extension unaccent activée');
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -94,12 +98,19 @@ const migrate = async () => {
     `);
     console.log('✅ Table game_attempts créée');
 
+    // Colonne imported_at sur players (ajout idempotent)
+    await client.query(`
+      ALTER TABLE players ADD COLUMN IF NOT EXISTS imported_at TIMESTAMP;
+    `);
+    console.log('✅ Colonne imported_at ajoutée à players');
+
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_daily_players_date ON daily_players(game_date);
       CREATE INDEX IF NOT EXISTS idx_game_sessions_user ON game_sessions(user_id);
       CREATE INDEX IF NOT EXISTS idx_game_sessions_date ON game_sessions(game_date);
       CREATE INDEX IF NOT EXISTS idx_game_sessions_type ON game_sessions(game_type);
       CREATE INDEX IF NOT EXISTS idx_users_points ON users(total_points DESC);
+      CREATE INDEX IF NOT EXISTS idx_players_imported_at ON players(imported_at);
     `);
     console.log('✅ Index créés');
 

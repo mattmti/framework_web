@@ -32,7 +32,6 @@ const getDailyStatus = async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // Vérifier si le joueur quotidien existe
     const dailyResult = await pool.query(
       `SELECT dp.id, p.name, p.photo_url
        FROM daily_players dp
@@ -42,10 +41,9 @@ const getDailyStatus = async (req, res) => {
     );
 
     if (dailyResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Aucun joueur quotidien défini pour aujourd\'hui' });
+      return res.status(404).json({ error: "Aucun joueur quotidien défini pour aujourd'hui" });
     }
 
-    const daily = dailyResult.rows[0];
     let userSession = null;
 
     if (req.user) {
@@ -64,7 +62,7 @@ const getDailyStatus = async (req, res) => {
            FROM game_attempts ga
            JOIN players p ON p.id = ga.guessed_player_id
            WHERE ga.session_id = $1
-           ORDER BY ga.attempt_number`,
+           ORDER BY ga.attempt_number DESC`,
           [session.id]
         );
         userSession = { ...session, attempts_list: attemptsResult.rows };
@@ -112,9 +110,12 @@ const startDailyGame = async (req, res) => {
 
     if (existingSession.rows.length > 0) {
       const s = existingSession.rows[0];
+      // Bloquer si déjà gagné ou plus de tentatives
       if (s.won || s.attempts >= MAX_ATTEMPTS) {
         return res.status(409).json({
-          error: s.won ? 'Déjà gagné aujourd\'hui !' : 'Plus de tentatives disponibles pour aujourd\'hui',
+          error: s.won
+            ? "Déjà gagné aujourd'hui !"
+            : "Plus de tentatives disponibles pour aujourd'hui",
           session_id: s.id,
         });
       }
@@ -138,7 +139,6 @@ const startDailyGame = async (req, res) => {
 // POST /api/game/random/start
 const startRandomGame = async (req, res) => {
   try {
-    // Prendre un joueur aléatoire
     const playerResult = await pool.query(
       `SELECT id FROM players ORDER BY RANDOM() LIMIT 1`
     );
@@ -171,8 +171,7 @@ const startRandomGame = async (req, res) => {
   }
 };
 
-// POST /api/game/:sessionId/guess  (authentifié)
-// POST /api/game/random/guess      (non authentifié, player_id dans body)
+// POST /api/game/guess
 const makeGuess = async (req, res) => {
   try {
     const { session_id, player_id, guessed_player_id } = req.body;
@@ -181,12 +180,12 @@ const makeGuess = async (req, res) => {
       return res.status(400).json({ error: 'Joueur deviné requis' });
     }
 
-    // CONVERTIR TOUS LES IDs EN INTEGER DÈS LE DÉBUT
     const guessedPlayerId = parseInt(guessed_player_id);
     const sessionIdNum = session_id ? parseInt(session_id) : null;
     const playerIdNum = player_id ? parseInt(player_id) : null;
 
-    let targetPlayerId, currentAttempts = 0;
+    let targetPlayerId;
+    let currentAttempts = 0;
     let gameType = 'random';
 
     if (sessionIdNum && req.user) {
@@ -203,6 +202,8 @@ const makeGuess = async (req, res) => {
       }
 
       const session = sessionResult.rows[0];
+
+      // Vérifier que la partie n'est pas déjà terminée
       if (session.won || session.attempts >= MAX_ATTEMPTS) {
         return res.status(409).json({ error: 'Partie déjà terminée' });
       }
@@ -235,8 +236,13 @@ const makeGuess = async (req, res) => {
     const isWon = guessed.id === target.id;
     const isGameOver = isWon || newAttempts >= MAX_ATTEMPTS;
 
-    // Sauvegarder en BDD si session
+    // Sauvegarder en BDD si session authentifiée
     if (sessionIdNum && req.user) {
+      const pointsEarned = isWon
+        ? (gameType === 'daily' ? DAILY_POINTS : RANDOM_POINTS)
+        : 0;
+
+      // Enregistrer la tentative (1 seul INSERT)
       await pool.query(
         `INSERT INTO game_attempts (
           session_id, attempt_number, guessed_player_id, guessed_player_name,
@@ -244,28 +250,9 @@ const makeGuess = async (req, res) => {
           result_nationality, result_club, age_direction, shirt_direction
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
-          sessionIdNum, newAttempts, guessedPlayerId, guessed.name,
-          comparison.age, comparison.shirt_number, comparison.position,
-          comparison.league, comparison.nationality, comparison.club,
-          comparison.age_direction, comparison.shirt_direction,
-        ]
-      );
-
-      let pointsEarned = 0;
-      if (isWon) {
-        pointsEarned = gameType === 'daily' ? DAILY_POINTS : RANDOM_POINTS;
-      }
-
-      await pool.query(
-        `INSERT INTO game_attempts (
-          session_id, attempt_number, guessed_player_id, guessed_player_name,
-          result_age, result_shirt_number, result_position, result_league,
-          result_nationality, result_club, age_direction, shirt_direction
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-        [
-          sessionIdNum, 
-          newAttempts, 
-          guessedPlayerId, 
+          sessionIdNum,
+          newAttempts,
+          guessedPlayerId,
           guessed.name,
           comparison.age === true,
           comparison.shirt_number === true,
@@ -278,11 +265,25 @@ const makeGuess = async (req, res) => {
         ]
       );
 
+      // ✅ CORRECTIF : Mettre à jour game_sessions (attempts + won + points)
+      await pool.query(
+        `UPDATE game_sessions
+         SET attempts       = $1,
+             won            = $2,
+             points_earned  = $3,
+             completed_at   = CASE WHEN $4 THEN NOW() ELSE completed_at END
+         WHERE id = $5`,
+        [newAttempts, isWon, pointsEarned, isGameOver, sessionIdNum]
+      );
+
+      // Mettre à jour les stats utilisateur si victoire
       if (isWon) {
         const wonColumn = gameType === 'daily' ? 'daily_wins' : 'random_wins';
         await pool.query(
           `UPDATE users
-           SET total_points = total_points + $1, ${wonColumn} = ${wonColumn} + 1, updated_at = NOW()
+           SET total_points = total_points + $1,
+               ${wonColumn} = ${wonColumn} + 1,
+               updated_at   = NOW()
            WHERE id = $2`,
           [pointsEarned, req.user.id]
         );
@@ -332,7 +333,7 @@ const makeGuess = async (req, res) => {
   }
 };
 
-// GET /api/game/players/search?q=mbappe
+// GET /api/game/players/search?q=mbappe  (supporte accents : Muller → Müller)
 const searchPlayers = async (req, res) => {
   try {
     const { q } = req.query;
@@ -343,7 +344,7 @@ const searchPlayers = async (req, res) => {
     const result = await pool.query(
       `SELECT id, name, club, nationality, photo_url
        FROM players
-       WHERE name ILIKE $1
+       WHERE unaccent(name) ILIKE unaccent($1)
        ORDER BY name
        LIMIT 10`,
       [`%${q}%`]

@@ -149,4 +149,25 @@ const getStats = async (req, res) => {
   }
 };
 
-module.exports = { getAllUsers, deleteUser, getUserHistory, updateUserRole, getStats };
+// GET /api/admin/imported-today — Joueurs importés/mis à jour aujourd'hui
+const getImportedToday = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, api_id, name, age, shirt_number, position, league, nationality, club, photo_url, imported_at
+       FROM players
+       WHERE DATE(imported_at) = CURRENT_DATE
+       ORDER BY imported_at DESC`
+    );
+
+    res.json({
+      players: result.rows,
+      total: result.rows.length,
+      date: new Date().toISOString().split('T')[0],
+    });
+  } catch (err) {
+    console.error('Erreur getImportedToday:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+};
+
+module.exports = { getAllUsers, deleteUser, getUserHistory, updateUserRole, getStats, getImportedToday };
