@@ -18,4 +18,15 @@ export default defineConfig({
       },
     },
   },
+  // ── Configuration Vitest ──────────────────────────────────────────────────
+  test: {
+    // Simule un environnement navigateur (DOM) pour tester les composants Vue
+    environment: 'jsdom',
+    // Rendre les helpers Vitest (describe, it, expect…) disponibles globalement
+    globals: true,
+    // Résolution de l'alias @ dans les tests (même config que Vite)
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
 })

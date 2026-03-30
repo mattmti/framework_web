@@ -172,7 +172,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
@@ -217,23 +217,38 @@ const rankColor = (rank) => {
 
 const handleDailyClick = async () => {
   if (!auth.isLoggedIn) {
+    // Ouvrir le modal de connexion si l'utilisateur n'est pas connecté
     window.dispatchEvent(new Event('open-login'))
     return
   }
-  router.push({ name: 'DailyGame' })
+  // Navigation vers la sous-route /play/daily via le paramètre dynamique :mode
+  router.push({ name: 'Game', params: { mode: 'daily' } })
 }
 
 const handleRandomClick = () => {
-  router.push({ name: 'RandomGame' })
+  // Navigation vers la sous-route /play/random — accessible sans connexion
+  router.push({ name: 'Game', params: { mode: 'random' } })
 }
 
+// ── Watcher : mise à jour du statut quotidien à la connexion/déconnexion ──
+// Si l'utilisateur se connecte depuis la page d'accueil (modal),
+// on rafraîchit automatiquement l'indicateur "Complété / X tentatives".
+// Si l'utilisateur se déconnecte, on efface le statut.
+watch(() => auth.isLoggedIn, async (loggedIn) => {
+  if (loggedIn) {
+    dailyStatus.value = await game.checkDailyStatus()
+  } else {
+    dailyStatus.value = null
+  }
+})
+
 onMounted(async () => {
-  // Statut quotidien
+  // Statut quotidien (uniquement si connecté)
   if (auth.isLoggedIn) {
     dailyStatus.value = await game.checkDailyStatus()
   }
 
-  // Top 5
+  // Top 5 du classement
   try {
     const { data } = await api.get('/leaderboard', { params: { limit: 5 } })
     topPlayers.value = data.leaderboard

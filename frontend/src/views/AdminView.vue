@@ -113,15 +113,10 @@
             <p class="text-white/40 text-sm max-w-lg">
               Récupère les données fraîches des meilleurs joueurs mondiaux (Real Madrid, Barcelona,
               Man City, Liverpool, Arsenal, Bayern, PSG, Inter) depuis football-api.com.
-              Utilise <strong class="text-white/70">~8 requêtes API</strong> sur les 100 disponibles par jour.
+              Utilise <strong class="text-white/70">~24 requêtes API</strong> sur les 100 disponibles par jour. L'import prend environ <strong class="text-white/70">3 minutes</strong> (délai anti rate-limit).
             </p>
           </div>
           <div class="flex items-center gap-3 flex-shrink-0">
-            <select v-model="importSeason"
-              class="bg-white/10 text-white text-sm rounded-xl px-3 py-2 border border-white/10 focus:outline-none focus:border-pitch-500">
-              <option value="2024">Saison 2024-25</option>
-              <option value="2025">Saison 2025-26</option>
-            </select>
             <button @click="triggerImport" :disabled="importing"
               class="btn-primary whitespace-nowrap">
               <span v-if="importing" class="animate-spin mr-2">⟳</span>
@@ -213,7 +208,7 @@
         Le seed initial est disponible via <code class="text-white/60 bg-white/5 px-1 rounded">node db/seed-players.js</code>.
       </p>
       <div class="px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm">
-        ⚠️ Limite : 100 requêtes/jour sur football-api.com. L'import top joueurs en utilise ~8.
+        ⚠️ Limite : 100 requêtes/jour sur football-api.com. L'import top joueurs en utilise ~24.
       </div>
     </div>
 
@@ -361,7 +356,7 @@ const importing = ref(false)
 const importResult = ref(null)
 const importedPlayers = ref([])
 const importedLoading = ref(false)
-const importSeason = ref('2025')
+const importSeason = 2024 // Saison 2024/2025 (fixe)
 const todayDate = computed(() => new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
 
 const fetchImportedToday = async () => {
@@ -380,7 +375,7 @@ const triggerImport = async () => {
   importing.value = true
   importResult.value = null
   try {
-    const { data } = await api.post('/admin/import-top-players', { season: parseInt(importSeason.value) })
+    const { data } = await api.post('/admin/import-top-players', { season: importSeason })
     importResult.value = data
     // Actualiser la liste après import
     await fetchImportedToday()

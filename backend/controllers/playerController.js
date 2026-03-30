@@ -35,25 +35,35 @@ const TOP_TEAMS = [
 // Nombre de joueurs titulaires à conserver par équipe
 const STARTERS_PER_TEAM = 11;
 
-// Appel générique vers api-sports.io
+// Délai entre chaque appel API (7s) pour respecter la limite de 10 req/min
+const API_DELAY_MS = 7000;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Appel générique vers api-sports.io avec détection du rate-limit
 const apiRequest = async (endpoint, params = {}) => {
   const response = await axios.get(`${FOOTBALL_API_BASE}/${endpoint}`, {
     headers: { 'x-apisports-key': FOOTBALL_API_KEY },
     params,
   });
-  return response.data;
+  const data = response.data;
+  // L'API renvoie 200 même en cas de rate-limit, avec errors.requests renseigné
+  if (data.errors?.requests) {
+    throw new Error(`Rate limit API: ${data.errors.requests}`);
+  }
+  return data;
 };
 
 // POST /api/players/import-top — Import des 11 titulaires de chaque équipe (admin uniquement)
-// = 12 requêtes API → ~132 joueurs au total
+// = 24 requêtes API (12 × /players/squads + 12 × /players) → ~132 joueurs au total
 const importTopPlayers = async (req, res) => {
   if (!FOOTBALL_API_KEY) {
     return res.status(500).json({ error: 'Clé API football non configurée' });
   }
 
-  const season = req.body.season || 2025; // 2025 = saison 2025/2026
+  const season = req.body.season || 2024; // 2024 = saison 2024/2025
   let totalAdded = 0;
   let totalUpdated = 0;
+  let totalApiRequests = 0;
   const errors = [];
   const teamsSummary = [];
 
@@ -61,12 +71,31 @@ const importTopPlayers = async (req, res) => {
     try {
       console.log(`📡 Import ${team.name} (saison ${season})...`);
 
-      // Récupère tous les joueurs de l'équipe (page 1 suffit pour les grands clubs)
+      // ── Étape 1 : /players/squads → numéros de maillot fiables ──────────
+      // Cet endpoint retourne directement player.number (toujours renseigné)
+      const squadData = await apiRequest('players/squads', { team: team.id });
+      totalApiRequests++;
+      await sleep(API_DELAY_MS); // respecter le rate-limit (10 req/min)
+
+      // Construire une map { playerId → shirtNumber } depuis le squad
+      const shirtNumberMap = {};
+      if (squadData.response?.[0]?.players) {
+        for (const p of squadData.response[0].players) {
+          if (p.id != null && p.number != null) {
+            shirtNumberMap[p.id] = p.number;
+          }
+        }
+      }
+      console.log(`   📋 Squad chargé — ${Object.keys(shirtNumberMap).length} numéros de maillot récupérés`);
+
+      // ── Étape 2 : /players → stats de la saison (tri par minutes jouées) ─
       const data = await apiRequest('players', {
         team: team.id,
         season,
         page: 1,
       });
+      totalApiRequests++;
+      await sleep(API_DELAY_MS); // respecter le rate-limit (10 req/min)
 
       if (!data.response || data.response.length === 0) {
         console.warn(`⚠️  Aucun joueur retourné pour ${team.name}`);
@@ -93,12 +122,14 @@ const importTopPlayers = async (req, res) => {
         const stats  = item.statistics[0];
 
         const age        = player.age;
-        // Numéro de maillot — plusieurs champs possibles selon l'API
-        const shirtNumber = stats.games?.number ?? stats.games?.shirtnumber ?? null;
+        // Numéro de maillot : priorité à /players/squads (fiable), fallback sur stats
+        const shirtNumber = shirtNumberMap[player.id]
+          ?? stats.games?.number
+          ?? stats.games?.shirtnumber
+          ?? null;
         const position   = stats.games?.position || player.position || null;
         const club       = stats.team?.name || team.name;
         const leagueName = stats.league?.name || team.league;
-        // Photo directement depuis l'API (URL garantie correcte)
         const photoUrl   = player.photo
           || `https://media.api-sports.io/football/players/${player.id}.png`;
 
@@ -145,9 +176,6 @@ const importTopPlayers = async (req, res) => {
       });
       console.log(`✅ ${team.name} — ${starters.length} titulaires importés`);
 
-      // Pause 350 ms pour respecter le rate-limit API-Sports
-      await new Promise(r => setTimeout(r, 350));
-
     } catch (err) {
       console.error(`❌ Erreur import ${team.name}:`, err.message);
       errors.push(`${team.name}: ${err.message}`);
@@ -155,12 +183,12 @@ const importTopPlayers = async (req, res) => {
   }
 
   res.json({
-    message: `Import 2025/2026 terminé — ${STARTERS_PER_TEAM} titulaires par équipe`,
+    message: `Import ${season}/${season + 1} terminé — ${STARTERS_PER_TEAM} titulaires par équipe`,
     season,
     teams_processed: teamsSummary.length,
     added: totalAdded,
     updated: totalUpdated,
-    api_requests_used: TOP_TEAMS.length,
+    api_requests_used: totalApiRequests,
     teams: teamsSummary,
     errors: errors.length > 0 ? errors : undefined,
   });

@@ -121,7 +121,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
@@ -267,8 +267,36 @@ onMounted(async () => {
   loading.value = false
 })
 
-onUnmounted(() => {
-  if (!game.isGameOver) {
+// ── Watcher : réinitialisation si le mode change en cours de navigation ───
+// Cas d'usage : l'utilisateur navigue de /play/random vers /play/daily
+// (ou inversement) sans quitter le composant. Vue Router réutilise le même
+// composant puisque c'est la même route Game — le watcher détecte le changement
+// et relance une nouvelle partie dans le bon mode.
+watch(() => props.mode, async (newMode, oldMode) => {
+  if (!newMode || newMode === oldMode) return
+
+  game.clearGame()
+  loading.value = true
+  error.value = ''
+
+  if (newMode === 'daily') {
+    if (!auth.isLoggedIn) {
+      router.push({ name: 'Home' })
+      return
+    }
+    const result = await game.startDailyGame()
+    if (!result.success) error.value = result.error
+  } else {
+    const result = await game.startRandomGame()
+    if (!result.success) error.value = result.error
   }
+
+  loading.value = false
+})
+
+onUnmounted(() => {
+  // Nettoyage de la partie si l'utilisateur quitte la page
+  // (sans nécessairement avoir terminé)
+  game.clearGame()
 })
 </script>
