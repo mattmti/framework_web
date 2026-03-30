@@ -13,8 +13,11 @@
     <p v-if="isWon" class="text-white/70 mb-2">
       Tu as trouvé en <strong class="text-white">{{ attemptsUsed }} tentative{{ attemptsUsed > 1 ? 's' : '' }}</strong> !
     </p>
-    <p v-else class="text-white/70 mb-2">
+    <p v-else-if="attemptsUsed >= 10" class="text-white/70 mb-2">
       Tu avais 10 tentatives. Le joueur était :
+    </p>
+    <p v-else class="text-white/70 mb-2">
+      Tu as abandonné après {{ attemptsUsed }} tentative{{ attemptsUsed !== 1 ? 's' : '' }}. Le joueur était :
     </p>
 
     <!-- Points gagnés -->

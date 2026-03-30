@@ -157,6 +157,27 @@ export const useGameStore = defineStore('game', {
       }
     },
 
+    async abandonGame() {
+      this.loading = true
+      this.error = null
+      try {
+        const payload = {
+          session_id: this.sessionId,
+          player_id: this.targetPlayerId,
+        }
+        const { data } = await api.post('/game/random/abandon', payload)
+        this.targetPlayer = data.target_player
+        this.isGameOver = true
+        this.isWon = false
+        return { success: true, data }
+      } catch (err) {
+        this.error = err.response?.data?.error || 'Impossible d\'abandonner la partie'
+        return { success: false, error: this.error }
+      } finally {
+        this.loading = false
+      }
+    },
+
     async searchPlayers(query) {
       this.searchQuery = query
       if (!query || query.length < 2) {

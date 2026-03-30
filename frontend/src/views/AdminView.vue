@@ -361,7 +361,7 @@ const importing = ref(false)
 const importResult = ref(null)
 const importedPlayers = ref([])
 const importedLoading = ref(false)
-const importSeason = ref('2024')
+const importSeason = ref('2025')
 const todayDate = computed(() => new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
 
 const fetchImportedToday = async () => {

@@ -102,6 +102,7 @@ const getMyHistory = async (req, res) => {
        FROM game_sessions gs
        LEFT JOIN players p ON p.id = gs.player_id
        WHERE gs.user_id = $1
+         AND gs.completed_at IS NOT NULL
        ORDER BY gs.created_at DESC
        LIMIT 30`,
       [req.user.id]

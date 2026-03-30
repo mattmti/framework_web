@@ -12,11 +12,8 @@ const pool = new Pool({
 const migrate = async () => {
   const client = await pool.connect();
   try {
-    console.log('🚀 Démarrage de la migration...');
-
     // Extension unaccent : permet la recherche sans accents (Muller → Müller)
     await client.query(`CREATE EXTENSION IF NOT EXISTS unaccent;`);
-    console.log('✅ Extension unaccent activée');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -32,7 +29,6 @@ const migrate = async () => {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    console.log('✅ Table users créée');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS players (
@@ -50,7 +46,6 @@ const migrate = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    console.log('✅ Table players créée');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS daily_players (
@@ -60,7 +55,6 @@ const migrate = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    console.log('✅ Table daily_players créée');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS game_sessions (
@@ -76,7 +70,6 @@ const migrate = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    console.log('✅ Table game_sessions créée');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS game_attempts (
@@ -96,13 +89,11 @@ const migrate = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    console.log('✅ Table game_attempts créée');
 
     // Colonne imported_at sur players (ajout idempotent)
     await client.query(`
       ALTER TABLE players ADD COLUMN IF NOT EXISTS imported_at TIMESTAMP;
     `);
-    console.log('✅ Colonne imported_at ajoutée à players');
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_daily_players_date ON daily_players(game_date);
@@ -112,7 +103,6 @@ const migrate = async () => {
       CREATE INDEX IF NOT EXISTS idx_users_points ON users(total_points DESC);
       CREATE INDEX IF NOT EXISTS idx_players_imported_at ON players(imported_at);
     `);
-    console.log('✅ Index créés');
 
     // Insert admin user by default
     const bcrypt = require('bcryptjs');
@@ -122,11 +112,10 @@ const migrate = async () => {
       VALUES ('admin', 'admin@footballdle.com', $1, 'admin')
       ON CONFLICT (email) DO NOTHING;
     `, [adminPassword]);
-    console.log('✅ Administrateur créé (admin@footballdle.com / Admin1234!)');
 
-    console.log('\n🎉 Migration terminée avec succès !');
+    console.log('✅ Migration terminée avec succès.');
   } catch (err) {
-    console.error('❌ Erreur lors de la migration:', err);
+    console.error('❌ Erreur lors de la migration:', err.message);
     process.exit(1);
   } finally {
     client.release();

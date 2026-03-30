@@ -68,6 +68,19 @@
           {{ hint }}
         </span>
       </div>
+
+      <!-- Bouton Abandonner (mode aléatoire uniquement) -->
+      <div v-if="mode === 'random'" class="flex justify-end mt-4 pt-4 border-t border-white/5">
+        <button
+          @click="handleAbandon"
+          :disabled="game.loading"
+          class="text-xs px-3 py-1.5 rounded-lg text-red-400/70 hover:text-red-400
+                 border border-red-400/20 hover:border-red-400/40 hover:bg-red-400/5
+                 transition-all duration-200 disabled:opacity-40"
+        >
+          🏳️ Abandonner
+        </button>
+      </div>
     </div>
 
     <!-- Erreur -->
@@ -199,6 +212,16 @@ const handleGuess = async (player) => {
       })
     }
   }
+}
+
+const handleAbandon = async () => {
+  error.value = ''
+  const result = await game.abandonGame()
+  if (!result.success) {
+    error.value = result.error
+  }
+  // La partie est maintenant terminée (isGameOver = true),
+  // GameResult s'affiche avec le vrai joueur et le bouton "Nouvelle partie"
 }
 
 const restartRandom = async () => {

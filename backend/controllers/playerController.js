@@ -4,45 +4,64 @@ const pool = require('../config/db');
 const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY;
 const FOOTBALL_API_BASE = 'https://v3.football.api-sports.io';
 
-// Top clubs à importer (1 requête par équipe → très économique)
+// 2 plus grands clubs × 6 pays = 12 équipes — saison 2025/2026
+// On importe les 11 joueurs titulaires (triés par minutes jouées)
 const TOP_TEAMS = [
-  { id: 541, name: 'Real Madrid',       league: 'La Liga',       leagueName: 'La Liga' },
-  { id: 529, name: 'Barcelona',          league: 'La Liga',       leagueName: 'La Liga' },
-  { id: 50,  name: 'Manchester City',    league: 'Premier League',leagueName: 'Premier League' },
-  { id: 40,  name: 'Liverpool',          league: 'Premier League',leagueName: 'Premier League' },
-  { id: 42,  name: 'Arsenal',            league: 'Premier League',leagueName: 'Premier League' },
-  { id: 157, name: 'Bayern Munich',      league: 'Bundesliga',    leagueName: 'Bundesliga' },
-  { id: 85,  name: 'Paris Saint-Germain',league: 'Ligue 1',       leagueName: 'Ligue 1' },
-  { id: 505, name: 'Inter Milan',        league: 'Serie A',       leagueName: 'Serie A' },
+  // ── 🇫🇷 Ligue 1 (France) ──────────────────────────────────────────────────
+  { id: 85,  name: 'Paris Saint-Germain', league: 'Ligue 1',        country: 'France' },
+  { id: 81,  name: 'Marseille',           league: 'Ligue 1',        country: 'France' },
+
+  // ── 🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (Angleterre) ────────────────────────────────────────
+  { id: 50,  name: 'Manchester City',     league: 'Premier League', country: 'England' },
+  { id: 40,  name: 'Liverpool',           league: 'Premier League', country: 'England' },
+
+  // ── 🇪🇸 La Liga (Espagne) ─────────────────────────────────────────────────
+  { id: 541, name: 'Real Madrid',         league: 'La Liga',        country: 'Spain' },
+  { id: 529, name: 'Barcelona',           league: 'La Liga',        country: 'Spain' },
+
+  // ── 🇮🇹 Serie A (Italie) ──────────────────────────────────────────────────
+  { id: 505, name: 'Inter Milan',         league: 'Serie A',        country: 'Italy' },
+  { id: 496, name: 'Juventus',            league: 'Serie A',        country: 'Italy' },
+
+  // ── 🇩🇪 Bundesliga (Allemagne) ────────────────────────────────────────────
+  { id: 157, name: 'Bayern Munich',       league: 'Bundesliga',     country: 'Germany' },
+  { id: 165, name: 'Borussia Dortmund',   league: 'Bundesliga',     country: 'Germany' },
+
+  // ── 🇳🇱 Eredivisie (Pays-Bas) ─────────────────────────────────────────────
+  { id: 194, name: 'Ajax',                league: 'Eredivisie',     country: 'Netherlands' },
+  { id: 197, name: 'PSV Eindhoven',       league: 'Eredivisie',     country: 'Netherlands' },
 ];
 
-// Appel générique vers football-api.com
+// Nombre de joueurs titulaires à conserver par équipe
+const STARTERS_PER_TEAM = 11;
+
+// Appel générique vers api-sports.io
 const apiRequest = async (endpoint, params = {}) => {
   const response = await axios.get(`${FOOTBALL_API_BASE}/${endpoint}`, {
-    headers: {
-      'x-apisports-key': FOOTBALL_API_KEY,
-    },
+    headers: { 'x-apisports-key': FOOTBALL_API_KEY },
     params,
   });
   return response.data;
 };
 
-// POST /api/players/import-top — Import des top joueurs (admin uniquement)
-// Utilise 1 requête par équipe → max 8 requêtes API pour ~160 joueurs top mondiaux
+// POST /api/players/import-top — Import des 11 titulaires de chaque équipe (admin uniquement)
+// = 12 requêtes API → ~132 joueurs au total
 const importTopPlayers = async (req, res) => {
   if (!FOOTBALL_API_KEY) {
     return res.status(500).json({ error: 'Clé API football non configurée' });
   }
 
-  const season = req.body.season || 2024;
+  const season = req.body.season || 2025; // 2025 = saison 2025/2026
   let totalAdded = 0;
   let totalUpdated = 0;
   const errors = [];
+  const teamsSummary = [];
 
   for (const team of TOP_TEAMS) {
     try {
       console.log(`📡 Import ${team.name} (saison ${season})...`);
 
+      // Récupère tous les joueurs de l'équipe (page 1 suffit pour les grands clubs)
       const data = await apiRequest('players', {
         team: team.id,
         season,
@@ -50,37 +69,54 @@ const importTopPlayers = async (req, res) => {
       });
 
       if (!data.response || data.response.length === 0) {
-        console.warn(`⚠️  Aucun joueur pour ${team.name}`);
+        console.warn(`⚠️  Aucun joueur retourné pour ${team.name}`);
+        errors.push(`${team.name}: aucun joueur retourné par l'API`);
         continue;
       }
 
-      for (const item of data.response) {
+      // ── Trier par minutes jouées (desc) pour identifier les 11 titulaires ─
+      const sorted = data.response
+        .filter(item => item.player && item.statistics?.[0])
+        .sort((a, b) => {
+          const minA = a.statistics[0].games?.minutes ?? 0;
+          const minB = b.statistics[0].games?.minutes ?? 0;
+          return minB - minA;
+        });
+
+      const starters = sorted.slice(0, STARTERS_PER_TEAM);
+
+      let teamAdded = 0;
+      let teamUpdated = 0;
+
+      for (const item of starters) {
         const player = item.player;
-        const stats = item.statistics?.[0];
+        const stats  = item.statistics[0];
 
-        if (!player || !stats) continue;
-
-        const age = player.age;
-        const shirtNumber = stats.games?.number ?? null;
-        const position = stats.games?.position || player.position || null;
-        const club = stats.team?.name || team.name;
+        const age        = player.age;
+        // Numéro de maillot — plusieurs champs possibles selon l'API
+        const shirtNumber = stats.games?.number ?? stats.games?.shirtnumber ?? null;
+        const position   = stats.games?.position || player.position || null;
+        const club       = stats.team?.name || team.name;
         const leagueName = stats.league?.name || team.league;
+        // Photo directement depuis l'API (URL garantie correcte)
+        const photoUrl   = player.photo
+          || `https://media.api-sports.io/football/players/${player.id}.png`;
 
         const result = await pool.query(
           `INSERT INTO players
              (api_id, name, age, shirt_number, position, league, nationality, club, photo_url, season, imported_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
            ON CONFLICT (api_id) DO UPDATE SET
-             name        = EXCLUDED.name,
-             age         = EXCLUDED.age,
-             shirt_number= EXCLUDED.shirt_number,
-             position    = EXCLUDED.position,
-             league      = EXCLUDED.league,
-             nationality = EXCLUDED.nationality,
-             club        = EXCLUDED.club,
-             photo_url   = EXCLUDED.photo_url,
-             season      = EXCLUDED.season,
-             imported_at = NOW()
+             name         = EXCLUDED.name,
+             age          = EXCLUDED.age,
+             shirt_number = EXCLUDED.shirt_number,
+             position     = EXCLUDED.position,
+             league       = EXCLUDED.league,
+             nationality  = EXCLUDED.nationality,
+             club         = EXCLUDED.club,
+             photo_url    = EXCLUDED.photo_url,
+             season       = EXCLUDED.season,
+             imported_at  = NOW()
            RETURNING (xmax = 0) AS inserted`,
           [
             player.id,
@@ -91,19 +127,27 @@ const importTopPlayers = async (req, res) => {
             leagueName,
             player.nationality,
             club,
-            player.photo,
+            photoUrl,
             season,
           ]
         );
 
-        if (result.rows[0]?.inserted) totalAdded++;
-        else totalUpdated++;
+        if (result.rows[0]?.inserted) { totalAdded++; teamAdded++; }
+        else { totalUpdated++; teamUpdated++; }
       }
 
-      console.log(`✅ ${team.name} importé`);
+      teamsSummary.push({
+        team: team.name,
+        country: team.country,
+        starters_imported: starters.length,
+        added: teamAdded,
+        updated: teamUpdated,
+      });
+      console.log(`✅ ${team.name} — ${starters.length} titulaires importés`);
 
-      // Pause de 300 ms pour respecter les limites de débit
-      await new Promise(r => setTimeout(r, 300));
+      // Pause 350 ms pour respecter le rate-limit API-Sports
+      await new Promise(r => setTimeout(r, 350));
+
     } catch (err) {
       console.error(`❌ Erreur import ${team.name}:`, err.message);
       errors.push(`${team.name}: ${err.message}`);
@@ -111,11 +155,14 @@ const importTopPlayers = async (req, res) => {
   }
 
   res.json({
-    message: 'Import terminé',
+    message: `Import 2025/2026 terminé — ${STARTERS_PER_TEAM} titulaires par équipe`,
+    season,
+    teams_processed: teamsSummary.length,
     added: totalAdded,
     updated: totalUpdated,
-    errors: errors.length > 0 ? errors : undefined,
     api_requests_used: TOP_TEAMS.length,
+    teams: teamsSummary,
+    errors: errors.length > 0 ? errors : undefined,
   });
 };
 

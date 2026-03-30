@@ -333,6 +333,73 @@ const makeGuess = async (req, res) => {
   }
 };
 
+// POST /api/game/random/abandon
+const abandonRandomGame = async (req, res) => {
+  try {
+    const { session_id, player_id } = req.body;
+
+    let targetPlayerId;
+
+    if (session_id && req.user) {
+      const sessionResult = await pool.query(
+        `SELECT player_id, won, completed_at
+         FROM game_sessions
+         WHERE id = $1 AND user_id = $2 AND game_type = 'random'`,
+        [parseInt(session_id), req.user.id]
+      );
+
+      if (sessionResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Session non trouvée' });
+      }
+
+      const session = sessionResult.rows[0];
+
+      if (session.won || session.completed_at) {
+        return res.status(409).json({ error: 'Partie déjà terminée' });
+      }
+
+      targetPlayerId = session.player_id;
+
+      // Marquer la session comme abandonnée (terminée sans victoire)
+      await pool.query(
+        `UPDATE game_sessions SET completed_at = NOW() WHERE id = $1`,
+        [parseInt(session_id)]
+      );
+    } else if (player_id) {
+      targetPlayerId = parseInt(player_id);
+    } else {
+      return res.status(400).json({ error: 'session_id ou player_id requis' });
+    }
+
+    const playerResult = await pool.query(
+      'SELECT * FROM players WHERE id = $1',
+      [targetPlayerId]
+    );
+
+    if (playerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Joueur non trouvé' });
+    }
+
+    const p = playerResult.rows[0];
+    res.json({
+      target_player: {
+        id: p.id,
+        name: p.name,
+        age: p.age,
+        shirt_number: p.shirt_number,
+        position: p.position,
+        league: p.league,
+        nationality: p.nationality,
+        club: p.club,
+        photo_url: p.photo_url,
+      },
+    });
+  } catch (err) {
+    console.error('Erreur abandonRandomGame:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+};
+
 // GET /api/game/players/search?q=mbappe  (supporte accents : Muller → Müller)
 const searchPlayers = async (req, res) => {
   try {
@@ -356,4 +423,4 @@ const searchPlayers = async (req, res) => {
   }
 };
 
-module.exports = { getDailyStatus, startDailyGame, startRandomGame, makeGuess, searchPlayers };
+module.exports = { getDailyStatus, startDailyGame, startRandomGame, makeGuess, searchPlayers, abandonRandomGame };
