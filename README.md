@@ -1,6 +1,6 @@
 # ⚽ FootballDle
 
-> Jeu de devinette de joueurs de football inspiré de Wordle — devine le joueur mystère en 10 tentatives grâce aux indices donnés à chaque essai.
+> Jeu de devinette de joueurs de football inspiré de Wordle. Devine le joueur mystère en 10 tentatives grâce aux indices donnés à chaque essai.
 
 ---
 
@@ -12,31 +12,34 @@ FootballDle est une application web full-stack permettant aux fans de football d
 
 ## ✨ Fonctionnalités principales
 
-- **Mode quotidien** — Un seul joueur par jour, commun à tous les utilisateurs (100 points). Connexion requise.
-- **Mode aléatoire** — Parties illimitées avec un joueur tiré au sort (5 points). Accessible sans compte.
-- **Système de comparaison** — Chaque tentative révèle 6 indices : âge (↑↓), numéro de maillot (↑↓), poste, ligue, nationalité, club.
-- **Classement global** — Leaderboard en temps réel trié par points.
-- **Profil utilisateur** — Historique des parties, stats, modification du pseudo/email/mot de passe.
-- **Panel d'administration** — Import de joueurs depuis api-football.com, gestion des utilisateurs, statistiques.
-- **Authentification JWT** — Inscription / connexion sécurisées, tokens 7 jours.
-- **Joueur quotidien automatique** — Cron job à minuit (Europe/Paris).
-- **Recherche sans accents** — "Muller" trouve "Müller" grâce à l'extension PostgreSQL `unaccent`.
+- **Mode quotidien** : Un seul joueur par jour, commun à tous les utilisateurs (100 points). Connexion requise.
+- **Mode aléatoire** : Parties illimitées avec un joueur tiré au sort (5 points). Accessible sans compte.
+- **Système de comparaison** : Chaque tentative révèle 6 indices : âge (↑↓), numéro de maillot (↑↓), poste, ligue, nationalité, club.
+- **Classement global** : Leaderboard en temps réel trié par points.
+- **Profil utilisateur** : Historique des parties, stats, modification du pseudo/email/mot de passe.
+- **Panel d'administration** : Import de joueurs depuis api-football.com, gestion des utilisateurs, statistiques.
+- **Authentification JWT** : Inscription / connexion sécurisées, tokens 7 jours.
+- **Joueur quotidien automatique** : Cron job à minuit (Europe/Paris).
+- **Recherche sans accents** : "Muller" trouve "Müller" grâce à l'extension PostgreSQL `unaccent`.
 
 ---
 
 ## 🧑‍💻 Organisation du projet
 
-Projet réalisé **individuellement**.
+Projet réalisé en binôme : **Mattéo** et **Iskander**.
 
-| Tâche | Détail |
+On a travaillé ensemble dès le départ pour poser l'architecture globale (base de données, routes API, structure Vue), puis on s'est réparti les tâches au fur et à mesure selon les besoins. Pas de découpage strict frontend/backend, on a tous les deux touché aux deux côtés selon ce qui avançait.
+
+| Tâche | Réalisé par |
 |---|---|
-| Architecture backend | MVC Express, modèle BDD PostgreSQL, routes REST |
-| Authentification | JWT, bcrypt, middleware auth/admin |
-| Logique de jeu | Système de comparaison, sessions, tentatives, points |
-| Import API football | Intégration api-football.com, rate-limit, numéros de maillot |
-| Frontend Vue 3 | Composants, stores Pinia, router imbriqué, UI Tailwind |
-| Panel admin | Gestion utilisateurs, import joueurs, stats globales |
-| Tests | Tests unitaires Vitest sur stores et composants |
+| Architecture BDD & migrations | Mattéo |
+| Authentification JWT & middleware | Iskander |
+| Logique de jeu (comparaison, tentatives, points) | Mattéo |
+| Import API football (squads, rate-limit) | Iskander |
+| Frontend Vue 3 : composants & stores Pinia | Mattéo |
+| Panel d'administration | Iskander |
+| Router imbriqué & vues principales | Mattéo |
+| Tests unitaires Vitest | Iskander |
 
 ---
 
@@ -52,7 +55,7 @@ Projet réalisé **individuellement**.
 
 ### 3. Session anonyme vs authentifiée
 **Problème :** Le mode aléatoire doit fonctionner sans compte ET avec compte (pour les points).  
-**Solution :** Middleware `optionalAuth` — une session BDD est créée uniquement si l'utilisateur est connecté.
+**Solution :** Middleware `optionalAuth` : une session BDD est créée uniquement si l'utilisateur est connecté.
 
 ### 4. Restauration de la session quotidienne
 **Problème :** Rechargement de page en plein milieu d'une partie quotidienne.  
@@ -167,7 +170,7 @@ framework_web/
         ├── components/ # Composants réutilisables (NavBar, PlayerSearch…)
         ├── stores/     # Pinia : auth.js, game.js
         ├── views/      # Pages : Home, GameView, Leaderboard, Profile, Admin
-        ├── router/     # Vue Router — routes imbriquées /play/:mode
+        ├── router/     # Vue Router : routes imbriquées /play/:mode
         └── services/   # Client Axios configuré
 ```
 
